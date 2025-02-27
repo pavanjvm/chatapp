@@ -4,17 +4,112 @@ import { Box, Button, Stack, Text, useToast } from "@chakra-ui/react";
 import axios from "axios";
 import { AddIcon } from "@chakra-ui/icons";
 import ChatLoading from "../ChatLoading";
-import { io } from "socket.io-client";
 import { getSender } from "../../config/chatLogic";
 import GroupChatModal from "./GroupChatModal";
 
-const ENDPOINT = "http://localhost:5000"; 
+// Replace Socket.io endpoint with AWS WebSocket endpoint
+const ENDPOINT = "wss://jzppq8whrk.execute-api.us-east-1.amazonaws.com/dev";
 
 const MyChats = ({ fetchAgain }) => {
   const [loggedUser, setLoggedUser] = useState();
   const { selectedChat, setSelectedChat, user, chats, setChats } = useChatState();
   const toast = useToast();
-  const socketRef = useRef(null);
+  const webSocketRef = useRef(null);
+  const reconnectAttempts = useRef(0);
+  const reconnectTimeout = useRef(null);
+  // We're removing this unused variable:
+  // const [socketConnected, setSocketConnected] = useState(false);
+  
+  // Only creating a local function for socket connection state
+  // since we're not using the state anywhere else
+  const setSocketConnected = (status) => {
+    // This is just a local function now, not using state
+    console.log(`Socket connection status: ${status}`);
+  };
+
+  // Function to send messages through WebSocket
+  const sendWebSocketMessage = useCallback((message) => {
+    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+      webSocketRef.current.send(JSON.stringify(message));
+    } else {
+      console.warn("WebSocket not connected in MyChats, message not sent:", message);
+      // We'll need to call connectWebSocket through the dependency array
+    }
+  }, []);
+
+  // Handle incoming WebSocket messages
+  const handleWebSocketMessage = useCallback((data) => {
+    console.log("Received WebSocket message in MyChats:", data);
+    
+    switch (data.action) {
+      case "messageReceived":
+        // Refresh chats list to show latest message
+        fetchChats();
+        break;
+      
+      default:
+        console.log("Unhandled WebSocket message type in MyChats:", data.action);
+    }
+  }, []);
+
+  // Function to establish WebSocket connection
+  const connectWebSocket = useCallback(() => {
+    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+      return; // Already connected
+    }
+
+    try {
+      webSocketRef.current = new WebSocket(ENDPOINT);
+
+      webSocketRef.current.onopen = () => {
+        console.log("WebSocket Connected in MyChats");
+        setSocketConnected(true);
+        reconnectAttempts.current = 0;
+        
+        // Send setup message with user info after connection
+        if (user) {
+          sendWebSocketMessage({
+            action: "setup",
+            userData: user
+          });
+        }
+      };
+
+      webSocketRef.current.onclose = () => {
+        console.log("WebSocket Disconnected in MyChats");
+        setSocketConnected(false);
+        
+        // Attempt to reconnect with exponential backoff
+        if (reconnectAttempts.current < 5) {
+          const timeout = Math.min(1000 * (2 ** reconnectAttempts.current), 30000);
+          reconnectTimeout.current = setTimeout(() => {
+            reconnectAttempts.current += 1;
+            connectWebSocket();
+          }, timeout);
+        } else {
+          toast({
+            title: "Connection Lost",
+            description: "Failed to reconnect to chat server",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "bottom-left",
+          });
+        }
+      };
+
+      webSocketRef.current.onerror = (error) => {
+        console.error("WebSocket Error in MyChats:", error);
+      };
+
+      webSocketRef.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+      };
+    } catch (error) {
+      console.error("WebSocket initialization error in MyChats:", error);
+    }
+  }, [user, toast, sendWebSocketMessage, handleWebSocketMessage]);
 
   const fetchChats = useCallback(async () => {
     if (!user?.token) return;
@@ -39,12 +134,22 @@ const MyChats = ({ fetchAgain }) => {
   useEffect(() => {
     setLoggedUser(JSON.parse(localStorage.getItem("userInfo")));
     fetchChats();
-
-    socketRef.current = io(ENDPOINT);
-    socketRef.current.on("message received", () => fetchChats());
-
-    return () => socketRef.current?.disconnect();
   }, [fetchChats, fetchAgain]);
+
+  // Connect to WebSocket when component mounts
+  useEffect(() => {
+    connectWebSocket();
+    
+    return () => {
+      // Clean up WebSocket connection and reconnection attempts
+      if (webSocketRef.current) {
+        webSocketRef.current.close();
+      }
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+      }
+    };
+  }, [connectWebSocket]);
 
   return (
     <Box

@@ -1,6 +1,19 @@
 import { Avatar, Tooltip } from "@chakra-ui/react";
+import { useEffect, useRef } from "react";
 
 const ScrollableChat = ({ messages = [], user = {} }) => {
+  const messagesEndRef = useRef(null);
+  
+  // This function will scroll to the bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  
+  // Auto-scroll when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+  
   return (
     <div 
       className="messages" 
@@ -76,7 +89,9 @@ const ScrollableChat = ({ messages = [], user = {} }) => {
             </div>
           </div>
         );
-      })}
+      })} 
+      {/* This invisible div will be our scroll target */}
+      <div ref={messagesEndRef} />
     </div>
   );
 };

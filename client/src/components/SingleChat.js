@@ -16,12 +16,11 @@ import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import axios from "axios";
 import "./styles.css";
 import ScrollableChat from "./ScrollableChat";
-import io from "socket.io-client";
 import Lottie from "react-lottie";
 import animationData from "../animations/typing.json";
 
-const ENDPOINT = "http://localhost:5000";
-var socket;
+// Replace Socket.io endpoint with AWS WebSocket endpoint
+const ENDPOINT = "wss://jzppq8whrk.execute-api.us-east-1.amazonaws.com/dev";
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [messages, setMessages] = useState([]);
@@ -34,8 +33,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [isTyping, setIsTyping] = useState(false);
   const toast = useToast();
 
-  // ✅ FIX: Use `useRef` for `selectedChatCompare`
+  // WebSocket reference
+  const webSocketRef = useRef(null);
   const selectedChatCompare = useRef(null);
+  const reconnectAttempts = useRef(0);
+  const reconnectTimeout = useRef(null);
+  const typingTimeout = useRef(null);
 
   const defaultOptions = {
     loop: true,
@@ -46,21 +49,153 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     },
   };
 
-  // ✅ FIX: Add `user` as dependency
+  // Function to send messages through WebSocket
+  const sendWebSocketMessage = useCallback((message) => {
+    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+      webSocketRef.current.send(JSON.stringify(message));
+    } else {
+      console.warn("WebSocket not connected, message not sent:", message);
+      // Attempt to reconnect if disconnected - we'll provide connectWebSocket via dependency array
+    }
+  }, []);
+
+  // Handle incoming WebSocket messages
+  const handleWebSocketMessage = useCallback((data) => {
+    console.log("Received WebSocket message:", data);
+    
+    switch (data.action) {
+      case "connected":
+        console.log("Setup confirmed by server");
+        break;
+        
+      case "typing":
+        if (data.room === selectedChat?._id) {
+          setIsTyping(true);
+        }
+        break;
+      
+      case "stopTyping":
+        if (data.room === selectedChat?._id) {
+          setIsTyping(false);
+        }
+        break;
+      
+      case "messageReceived":
+        const newMessageReceived = data.message;
+        
+        if (
+          !selectedChatCompare.current ||
+          selectedChatCompare.current._id !== newMessageReceived.chat._id
+        ) {
+          // If chat is not selected or doesn't match current chat
+          if (!notification.includes(newMessageReceived)) {
+            setNotification([newMessageReceived, ...notification]);
+            setFetchAgain(!fetchAgain);
+          }
+        } else {
+          // Add message to current chat
+          setMessages((prevMessages) => [...prevMessages, newMessageReceived]);
+        }
+        break;
+      
+      default:
+        console.log("Unhandled WebSocket message type:", data.action);
+    }
+  }, [selectedChat, notification, setNotification, fetchAgain, setFetchAgain]);
+
+  // Function to establish WebSocket connection
+  const connectWebSocket = useCallback(() => {
+    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+      return; // Already connected
+    }
+
+    try {
+      webSocketRef.current = new WebSocket(ENDPOINT);
+
+      webSocketRef.current.onopen = () => {
+        console.log("WebSocket Connected");
+        setSocketConnected(true);
+        reconnectAttempts.current = 0;
+        
+        // Send setup message with user info after connection
+        sendWebSocketMessage({
+          action: "setup",
+          userData: user
+        });
+      };
+
+      webSocketRef.current.onclose = () => {
+        console.log("WebSocket Disconnected");
+        setSocketConnected(false);
+        
+        // Attempt to reconnect with exponential backoff
+        if (reconnectAttempts.current < 5) {
+          const timeout = Math.min(1000 * (2 ** reconnectAttempts.current), 30000);
+          reconnectTimeout.current = setTimeout(() => {
+            reconnectAttempts.current += 1;
+            connectWebSocket();
+          }, timeout);
+        } else {
+          toast({
+            title: "Connection Lost",
+            description: "Failed to reconnect to chat server",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "bottom",
+          });
+        }
+      };
+
+      webSocketRef.current.onerror = (error) => {
+        console.error("WebSocket Error:", error);
+        toast({
+          title: "Connection Error",
+          description: "Failed to connect to chat server",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "bottom",
+        });
+      };
+
+      webSocketRef.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+      };
+    } catch (error) {
+      console.error("WebSocket initialization error:", error);
+    }
+  }, [user, toast, sendWebSocketMessage, handleWebSocketMessage]);
+
+  // Connect to WebSocket when component mounts
   useEffect(() => {
-    socket = io(ENDPOINT);
-    socket.emit("setup", user);
-    socket.on("connected", () => setSocketConnected(true));
-    socket.on("typing", () => setIsTyping(true));
-    socket.on("stop typing", () => setIsTyping(false));
-
+    connectWebSocket();
+    
     return () => {
-      socket.off("typing");
-      socket.off("stop typing");
+      // Clean up WebSocket connection and reconnection attempts
+      if (webSocketRef.current) {
+        webSocketRef.current.close();
+      }
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+      }
+      if (typingTimeout.current) {
+        clearTimeout(typingTimeout.current);
+      }
     };
-  }, [user]);
+  }, [connectWebSocket]);
 
-  // ✅ FIX: Use `useCallback` for `fetchMessages`
+  // Join chat room when selected chat changes
+  useEffect(() => {
+    if (selectedChat && socketConnected) {
+      sendWebSocketMessage({
+        action: "joinChat",
+        room: selectedChat._id
+      });
+    }
+  }, [selectedChat, socketConnected, sendWebSocketMessage]);
+
   const fetchMessages = useCallback(async () => {
     if (!selectedChat) return;
     try {
@@ -76,7 +211,14 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       );
       setMessages(data);
       setLoading(false);
-      socket.emit("join chat", selectedChat._id);
+      
+      // Join chat room via WebSocket
+      if (socketConnected) {
+        sendWebSocketMessage({
+          action: "joinChat",
+          room: selectedChat._id
+        });
+      }
     } catch (error) {
       toast({
         title: "Error Occurred!",
@@ -87,41 +229,21 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         position: "bottom",
       });
     }
-  }, [selectedChat, user, toast]);
+  }, [selectedChat, user, toast, socketConnected, sendWebSocketMessage]);
 
-  // ✅ FIX: Use `useEffect` to update `selectedChatCompare`
   useEffect(() => {
     fetchMessages();
     selectedChatCompare.current = selectedChat;
   }, [fetchMessages, selectedChat]);
 
-  // ✅ FIX: Added missing `setFetchAgain` and `setNotification`
-  useEffect(() => {
-    socket.on("message received", (newMessageReceived) => {
-      if (
-        !selectedChatCompare.current ||
-        selectedChatCompare.current._id !== newMessageReceived.chat._id
-      ) {
-        if (!notification.includes(newMessageReceived)) {
-          setNotification((prevNotifications) => [
-            newMessageReceived,
-            ...prevNotifications,
-          ]);
-          setFetchAgain((prev) => !prev);
-        }
-      } else {
-        setMessages((prevMessages) => [...prevMessages, newMessageReceived]);
-      }
-    });
-
-    return () => {
-      socket.off("message received");
-    };
-  }, [notification, setNotification, setFetchAgain]);
-
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage) {
-      socket.emit("stop typing", selectedChat._id);
+      // Stop typing indicator
+      sendWebSocketMessage({
+        action: "stopTyping",
+        room: selectedChat._id
+      });
+      
       try {
         const config = {
           headers: {
@@ -138,8 +260,18 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           },
           config
         );
-        socket.emit("new message", data);
-        setMessages((prevMessages) => [...prevMessages, data]);
+        
+        // Send new message via WebSocket
+        sendWebSocketMessage({
+          action: "newMessage",
+          newMessage: {
+            ...data,
+            chat: selectedChat,
+            sender: user
+          }
+        });
+        
+        setMessages([...messages, data]);
       } catch (error) {
         toast({
           title: "Error Occurred!",
@@ -153,24 +285,32 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
   };
 
-  const typingHandler = (e) => {
+  const typingHandler = useCallback((e) => {
     setNewMessage(e.target.value);
-    if (!socketConnected) return;
+    if (!socketConnected || !selectedChat) return;
+
     if (!typing) {
       setTyping(true);
-      socket.emit("typing", selectedChat._id);
+      sendWebSocketMessage({
+        action: "typing",
+        room: selectedChat._id
+      });
     }
-    let lastTime = new Date().getTime();
-    let timerLength = 3000;
-    setTimeout(() => {
-      let timeNow = new Date().getTime();
-      let timeDiff = timeNow - lastTime;
-      if (timeDiff >= timerLength && typing) {
-        socket.emit("stop typing", selectedChat._id);
+
+    // Clear existing timeout
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+
+    const timerLength = 3000;
+    typingTimeout.current = setTimeout(() => {
+      if (typing) {
+        sendWebSocketMessage({
+          action: "stopTyping",
+          room: selectedChat._id
+        });
         setTyping(false);
       }
     }, timerLength);
-  };
+  }, [socketConnected, selectedChat, typing, sendWebSocketMessage]);
 
   return (
     <>
