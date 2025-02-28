@@ -1,0 +1,35 @@
+# Use a Node.js base image to build the Next.js app
+FROM node:18-alpine AS build
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY package*.json ./
+
+# Install dependencies with legacy-peer-deps
+RUN npm install --legacy-peer-deps
+
+# Copy the entire application code
+COPY . .    
+
+# Build the Next.js application
+RUN npm run build
+
+# Use a minimal Node.js image for production
+FROM node:18-alpine AS production
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the built Next.js app from the build stage
+COPY --from=build /app . 
+
+# Install only production dependencies
+RUN npm install --only=production --legacy-peer-deps
+
+# Expose the port the Next.js server will run on
+EXPOSE 3000
+
+# Start the Next.js server
+CMD ["npm", "run", "start"]
