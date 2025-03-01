@@ -117,7 +117,7 @@ const MyChats = ({ fetchAgain }) => {
       const config = {
         headers: { Authorization: `Bearer ${user.token}` },
       };
-      const { data } = await axios.get(`${process.env.REACT_APP_API_URL}/api/chat`, config);
+      const { data } = await axios.get(`https://lockin.sbs/api/chat`, config);
       setChats(data);
     } catch (error) {
       toast({

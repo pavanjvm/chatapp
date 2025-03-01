@@ -51,7 +51,7 @@ const Login = () => {
         },
       };
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/user/login`,
+        `https://lockin.sbs/api/user/login`,
         { email, password },
         config
       );
