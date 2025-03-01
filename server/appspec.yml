@@ -1,0 +1,19 @@
+version: 0.2
+os: linux
+files:
+  - source: backend.zip
+    destination: /app
+
+hooks:
+  BeforeInstall:
+    - location: /app/server/scripts/stop-server.sh
+      runas: root
+      timeout: 300
+
+  AfterInstall:
+    - location: /app/server/scripts/install-dependencies.sh
+      runas: root
+      timeout: 300
+    - location: /app/server/scripts/start-server.sh
+      runas: root
+      timeout: 300
