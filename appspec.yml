@@ -1,7 +1,7 @@
 version: 0.0
 os: linux
 files:
-  - source: server.zip
+  - source: server
     destination: /app
   - source: package.json
     destination: /app
