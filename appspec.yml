@@ -1,7 +1,7 @@
 version: 0.0
 os: linux
 files:
-  - source: server
+  - source: server.zip
     destination: /app
   - source: package.json
     destination: /app
@@ -10,14 +10,14 @@ files:
 
 hooks:
   BeforeInstall:
-    - location: /server/scripts/stop-server.sh
+    - location: /scripts/stop-server.sh
       runas: root
       timeout: 300
 
   AfterInstall:
-    - location: /server/scripts/install-dependencies.sh
+    - location: /scripts/install-dependencies.sh
       runas: root
       timeout: 300
-    - location: /server/scripts/start-server.sh
+    - location: /scripts/start-server.sh
       runas: root
       timeout: 300
