@@ -1,6 +1,6 @@
 #!/bin/bash
 
 echo "Starting server..."
-cd ..
+cd server
 
 npm start
