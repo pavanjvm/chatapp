@@ -1,5 +1,5 @@
 #!/bin/bash
 
 echo "Installing dependencies..."
-cd /app
+cd server
 npm install

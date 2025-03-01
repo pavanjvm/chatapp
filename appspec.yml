@@ -12,14 +12,14 @@ files:
 
 hooks:
   BeforeInstall:
-    - location: /app/scripts/stop-server.sh
+    - location: /scripts/stop-server.sh
       runas: root
       timeout: 300
 
   AfterInstall:
-    - location: /app/scripts/install-dependencies.sh
+    - location: /scripts/install-dependencies.sh
       runas: root
       timeout: 300
-    - location: /app/scripts/start-server.sh
+    - location: /scripts/start-server.sh
       runas: root
       timeout: 300
