@@ -2,7 +2,7 @@
 
 echo "Starting server..."
 pwd
+cd app
 ls
-cd server
 
 npm start
