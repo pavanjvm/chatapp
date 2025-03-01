@@ -2,7 +2,9 @@ version: 0.0
 os: linux
 files:
   - source: server.zip
-    destination: /app
+    destination: /app  # Extracts server folder inside /app
+  - source: scripts/
+    destination: /app/scripts 
   - source: package.json
     destination: /app
   - source: package-lock.json
@@ -10,14 +12,14 @@ files:
 
 hooks:
   BeforeInstall:
-    - location: /scripts/stop-server.sh
+    - location: /app/scripts/stop-server.sh
       runas: root
       timeout: 300
 
   AfterInstall:
-    - location: /scripts/install-dependencies.sh
+    - location: /app/scripts/install-dependencies.sh
       runas: root
       timeout: 300
-    - location: /scripts/start-server.sh
+    - location: /app/scripts/start-server.sh
       runas: root
       timeout: 300
