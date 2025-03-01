@@ -11,18 +11,17 @@ import {
 import { faEye, faEyeSlash } from "@fortawesome/free-regular-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import React, { useState, useEffect } from "react";
-import { useHistory } from "react-router-dom"; // ✅ React Router v5
+import { useHistory } from "react-router-dom"; 
 import axios from "axios";
-
+//const REACT_APP_API_URL="http://localhost:5000"
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pshow, setPShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const toast = useToast();
-  const history = useHistory(); // ✅ Use `useHistory` for React Router v5
+  const history = useHistory(); 
 
-  // Auto Redirect if Already Logged In
   useEffect(() => {
     const userInfo = JSON.parse(localStorage.getItem("userInfo"));
     if (userInfo) {
@@ -52,10 +51,11 @@ const Login = () => {
         },
       };
       const response = await axios.post(
-        "/api/user/login",
+        `${process.env.REACT_APP_API_URL}/api/user/login`,
         { email, password },
         config
       );
+      console.log("Backend URL:", process.env.REACT_APP_API_URL);
       const data = response.data;
 
       console.log("Login Response:", data); // Debug API Response
