@@ -28,6 +28,7 @@ app.use(
     credentials: true, // Enable if you use cookies
   })
 );
+app.options("*", cors()); // Handle preflight requests for all routes
 
 app.get("/", (req, res) => {
   res.send("API is Called!!");
