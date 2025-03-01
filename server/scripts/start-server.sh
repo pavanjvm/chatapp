@@ -3,6 +3,5 @@
 echo "Starting server..."
 pwd
 cd app
-ls
-
+npm install
 npm start
