@@ -1,7 +1,11 @@
 version: 0.2
 os: linux
 files:
-  - source: backend.zip
+  - source: server.zip
+    destination: /app/server
+  - source: package.json
+    destination: /app
+  - source: package-lock.json
     destination: /app
 
 hooks:
