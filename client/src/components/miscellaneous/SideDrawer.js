@@ -133,7 +133,7 @@ const SideDrawer = () => {
           </Button>
         </Tooltip>
         <Text fontSize="2xl" fontFamily="monospace">
-          caht caht
+          cprime chatroom
         </Text>
         <div>
           <Menu>
