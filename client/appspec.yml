@@ -1,18 +1,19 @@
 version: 0.0
 os: linux
+
 files:
   - source: build
     destination: /var/www/html
-  
+
 hooks:
   BeforeInstall:
-    - location: client/scripts/stop-nginx.sh
+    - location: scripts/stop-nginx.sh
       runas: root
       timeout: 300
   AfterInstall:
-    - location: client/scripts/configure-nginx.sh
+    - location: scripts/configure-nginx.sh
       runas: root
       timeout: 300
-    - location: client/scripts/start-nginx.sh
+    - location: scripts/start-nginx.sh
       runas: root
       timeout: 300
